@@ -11,7 +11,7 @@ from typing import List, Optional, Dict
 import uuid
 from datetime import datetime, timedelta, timezone
 import bcrypt
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+# AI Agent placeholder
 import razorpay
 import hmac
 import hashlib
@@ -651,14 +651,7 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
     
     # Process AI query
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"ai_session_{current_user.user_id}",
-            system_message="You are an expert legal assistant for Indian law students. Provide accurate, detailed, and exam-oriented answers. Include relevant case laws, legal provisions, and structured explanations."
-        ).with_model("openai", "gpt-5.2")
-        
-        user_message = UserMessage(text=data.query)
-        response = await chat.send_message(user_message)
+        response = "This AI feature is currently offline for routine maintenance. We apologize for the inconvenience! In the future, the admin can enable OpenAI keys here."
         
         # Save chat message
         message_id = f"msg_{uuid.uuid4().hex[:12]}"

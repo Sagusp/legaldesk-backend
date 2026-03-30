@@ -993,6 +993,7 @@ async def get_note_pdf(note_id: str, current_user: User = Depends(get_current_us
 async def note_ai_action(
     note_id: str,
     action: str,
+    question: Optional[str] = None,
     word_limit: Optional[int] = None,
     current_user: User = Depends(get_current_user)
 ):
@@ -1005,19 +1006,25 @@ async def note_ai_action(
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     
+    content = note.get('content', '')
+    if not content and not note.get('pdf_data'):
+        content = "Empty note."
+    
     # Create AI prompt based on action
     prompts = {
-        "summarize": f"Summarize the following legal note into short revision notes (max {word_limit or 200} words):\n\n{note['content']}",
-        "explain": f"Explain the meaning of the following legal note in simple language for law students:\n\n{note['content']}",
-        "generate_5": f"Generate a 5-mark exam answer based on this note:\n\n{note['content']}",
-        "generate_10": f"Generate a 10-mark exam answer with introduction, points, and conclusion based on this note:\n\n{note['content']}",
-        "generate_15": f"Generate a 15-mark exam answer with case laws and legal provisions based on this note:\n\n{note['content']}",
-        "generate_20": f"Generate a detailed 20-mark exam answer with introduction, headings, case laws, legal provisions, and conclusion based on this note:\n\n{note['content']}"
+        "summarize": f"Summarize the following legal note into highly detailed revision notes for exam study:\n\n{content}",
+        "explain": f"Explain the meaning of the following legal note in simple, easy-to-understand language for law students:\n\n{content}",
+        "generate_5": f"Generate a 5-mark exam answer based on this note:\n\n{content}",
+        "generate_10": f"Generate a 10-mark exam answer with introduction, points, and conclusion based on this note:\n\n{content}",
+        "generate_15": f"Generate a 15-mark exam answer with case laws and legal provisions based on this note:\n\n{content}",
+        "generate_20": f"Generate a detailed 20-mark exam answer with introduction, headings, case laws, legal provisions, and conclusion based on this note:\n\n{content}"
     }
     
-    if action not in prompts:
+    if action == "answer" and question:
+        prompts[action] = f"Question: '{question}'\n\nPlease provide a highly professional, fully ready answer for a law exam or study based on the note provided. If asking about a Bare Act, explain it simply. Include professional details, case laws if needed, and structure it exactly from Introduction to Conclusion.\n\nNote Content:\n{content}"
+    elif action not in prompts:
         # If it's a custom typed question from the user, dynamically handle it!
-        prompts[action] = f"Answer the following question about this legal note: '{action}'\n\nNote Content: {note['content']}"
+        prompts[action] = f"Answer the following question about this legal note: '{action}'\n\nNote Content: {content}"
     
     try:
         # Connect strictly to Google Gemini API
@@ -1025,12 +1032,21 @@ async def note_ai_action(
         if not gemini_api_key:
             raise Exception("GEMINI_API_KEY flawlessly missing from Render exactly!")
         
-        system_prompt = "You are an expert legal educator helping law students in India.\n\n"
+        system_prompt = "You are an expert legal educator helping law students in India. Always give complete, detailed exam-ready legal answers.\n\n"
         full_prompt = system_prompt + prompts[action]
         
         # Fire raw HTTP request to AI Neural Network to bypass SDK version issues
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
         payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+        
+        # Inject PDF if there's no text content but there is a PDF
+        if not note.get('content') and note.get('pdf_data'):
+            payload["contents"][0]["parts"].append({
+                "inline_data": {
+                    "mime_type": "application/pdf",
+                    "data": note["pdf_data"]
+                }
+            })
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             ai_resp = await client.post(url, json=payload)
@@ -2326,6 +2342,71 @@ async def get_subscription_history(current_user: User = Depends(get_current_user
     ).sort("created_at", -1).to_list(20)
     
     return {"subscriptions": subscriptions}
+
+# ===========================
+# Admin User Management & Notifications
+# ===========================
+
+@api_router.get("/admin/users")
+async def admin_get_users(
+    search: Optional[str] = None,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Get all users with optional search"""
+    query = {}
+    if search:
+        query = {"$or": [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"email": {"$regex": search, "$options": "i"}}
+        ]}
+    users = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(100)
+    return {"users": users}
+
+@api_router.put("/admin/users/{user_id}")
+async def admin_update_user(
+    user_id: str,
+    data: dict,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Update user data (e.g. grant premium)"""
+    await db.users.update_one({"user_id": user_id}, {"$set": data})
+    return {"success": True}
+
+@api_router.delete("/admin/users/{user_id}")
+async def admin_delete_user(
+    user_id: str,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Delete user and related data entirely"""
+    await db.users.delete_one({"user_id": user_id})
+    return {"success": True}
+
+@api_router.post("/admin/notifications")
+async def admin_create_notification(
+    data: dict,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Send a notification to all users"""
+    notif_id = f"notif_{uuid.uuid4().hex[:12]}"
+    notif = {
+        "notification_id": notif_id,
+        "title": data.get("title", ""),
+        "content": data.get("content", ""),
+        "created_by": admin.user_id,
+        "created_at": datetime.utcnow()
+    }
+    await db.notifications.insert_one(notif)
+    return {"message": "Notification created", "notification_id": notif_id}
+
+@api_router.get("/notifications/latest")
+async def get_latest_notification(
+    current_user: User = Depends(get_current_user)
+):
+    """User: Fetch the latest notification"""
+    notif = await db.notifications.find_one({}, {"_id": 0}, sort=[("created_at", -1)])
+    if notif:
+        return {"notification": notif}
+    return {"notification": None}
 
 # Include the router in the main app
 app.include_router(api_router)

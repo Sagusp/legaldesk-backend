@@ -735,7 +735,7 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
             
             User query: {data.query}
             """
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
             
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -1029,7 +1029,7 @@ async def note_ai_action(
         full_prompt = system_prompt + prompts[action]
         
         # Fire raw HTTP request to AI Neural Network to bypass SDK version issues
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
         payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
         
         async with httpx.AsyncClient(timeout=30.0) as client:

@@ -718,22 +718,22 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
     try:
         # Gemini API Initialization
         gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
-        genai.configure(api_key=gemini_api_key)
-        
-        # Configure model and generate response
-        model = genai.GenerativeModel('gemini-pro')
-        
-        prompt = f"""
-        You are 'The Legal Desk' AI Assistant, an expert in Indian Law designed for law students.
-        Please provide a precise, highly accurate, and student-friendly legal answer to the following query.
-        Keep the response clear, professional, and well-structured, but under 4 paragraphs.
-        
-        User query: {data.query}
-        """
-        
         try:
-            ai_result = model.generate_content(prompt)
-            response = ai_result.text
+            prompt = f"""
+            You are 'The Legal Desk' AI Assistant, an expert in Indian Law designed for law students.
+            Please provide a precise, highly accurate, and student-friendly legal answer to the following query.
+            Keep the response clear, professional, and well-structured, but under 4 paragraphs.
+            
+            User query: {data.query}
+            """
+            
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                ai_resp = await client.post(url, json=payload)
+                ai_resp.raise_for_status()
+                response = ai_resp.json()['candidates'][0]['content']['parts'][0]['text']
         except Exception as api_err:
             logger.error(f"Gemini API failure: {str(api_err)}")
             response = "I encountered an error connecting to my neural network. Please try again in exactly one minute."
@@ -1012,15 +1012,14 @@ async def note_ai_action(
     try:
         # Connect strictly to Google Gemini API
         gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        # Fire raw HTTP request to AI Neural Network to bypass SDK version issues
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
+        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
         
-        system_prompt = "You are an expert legal educator helping law students in India.\n\n"
-        full_prompt = system_prompt + prompts[action]
-        
-        # Fire request to AI Neural Network
-        ai_result = model.generate_content(full_prompt)
-        response = ai_result.text
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            ai_resp = await client.post(url, json=payload)
+            ai_resp.raise_for_status()
+            response = ai_resp.json()['candidates'][0]['content']['parts'][0]['text']
         
         # Increment usage count
         await db.users.update_one(

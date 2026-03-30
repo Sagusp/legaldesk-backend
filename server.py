@@ -11,7 +11,7 @@ from typing import List, Optional, Dict
 import uuid
 from datetime import datetime, timedelta, timezone
 import bcrypt
-# AI Agent placeholder
+import google.generativeai as genai
 import razorpay
 import hmac
 import hashlib
@@ -28,6 +28,11 @@ from models import (
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Default admin credentials (optional, create admin on startup)
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
+ADMIN_NAME = os.environ.get('ADMIN_NAME', 'Admin')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -46,6 +51,40 @@ if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
 
 # Create the main app without a prefix
 app = FastAPI()
+
+async def ensure_default_admin():
+    """Create a default admin account if ADMIN_EMAIL and ADMIN_PASSWORD are set."""
+    if not ADMIN_EMAIL or not ADMIN_PASSWORD:
+        return
+    existing_user = await db.users.find_one({"email": ADMIN_EMAIL})
+    if existing_user:
+        if existing_user.get("role") != UserRole.ADMIN:
+            await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"role": UserRole.ADMIN}})
+        return
+    password_hash = bcrypt.hashpw(ADMIN_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    user = User(
+        user_id=user_id,
+        email=ADMIN_EMAIL,
+        name=ADMIN_NAME,
+        role=UserRole.ADMIN,
+        subscription_status=SubscriptionStatus.FREE,
+        ai_usage_count=0
+    )
+    await db.users.insert_one(user.dict())
+    await db.user_passwords.insert_one({
+        "user_id": user_id,
+        "password_hash": password_hash,
+        "created_at": datetime.utcnow()
+    })
+    logger.info(f"Default admin account created: {ADMIN_EMAIL}")
+
+@app.on_event("startup")
+async def on_startup():
+    try:
+        await ensure_default_admin()
+    except Exception as e:
+        logger.error(f"Failed to ensure default admin: {e}")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -651,7 +690,27 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
     
     # Process AI query
     try:
-        response = "This AI feature is currently offline for routine maintenance. We apologize for the inconvenience! In the future, the admin can enable OpenAI keys here."
+        # Gemini API Initialization
+        gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
+        genai.configure(api_key=gemini_api_key)
+        
+        # Configure model and generate response
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        prompt = f"""
+        You are 'The Legal Desk' AI Assistant, an expert in Indian Law designed for law students.
+        Please provide a precise, highly accurate, and student-friendly legal answer to the following query.
+        Keep the response clear, professional, and well-structured, but under 4 paragraphs.
+        
+        User query: {data.query}
+        """
+        
+        try:
+            ai_result = model.generate_content(prompt)
+            response = ai_result.text
+        except Exception as api_err:
+            logger.error(f"Gemini API failure: {str(api_err)}")
+            response = "I encountered an error connecting to my neural network. Please try again in exactly one minute."
         
         # Save chat message
         message_id = f"msg_{uuid.uuid4().hex[:12]}"

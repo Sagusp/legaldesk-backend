@@ -629,13 +629,11 @@ async def check_ai_usage_limit(current_user: User):
     now = datetime.utcnow()
     
     if current_user.subscription_status == SubscriptionStatus.PREMIUM:
-        # Premium users: 20 queries per DAY
+        # Premium users: 50 queries per DAY
         last_reset = current_user.last_ai_reset
-        if isinstance(last_reset, str):
-            last_reset = datetime.fromisoformat(last_reset)
         
-        # Reset daily count for premium users
-        if last_reset.date() < now.date():
+        if last_reset is None:
+            # First time using AI logic
             await db.users.update_one(
                 {"user_id": current_user.user_id},
                 {"$set": {
@@ -644,6 +642,21 @@ async def check_ai_usage_limit(current_user: User):
                 }}
             )
             current_user.ai_usage_count = 0
+            current_user.last_ai_reset = now
+        else:
+            if isinstance(last_reset, str):
+                last_reset = datetime.fromisoformat(last_reset)
+            
+            # Reset daily count for premium users (check if different day)
+            if last_reset.date() != now.date():
+                await db.users.update_one(
+                    {"user_id": current_user.user_id},
+                    {"$set": {
+                        "ai_usage_count": 0,
+                        "last_ai_reset": now
+                    }}
+                )
+                current_user.ai_usage_count = 0
         
         # Check daily limit for premium
         if current_user.ai_usage_count >= PREMIUM_USER_DAILY_LIMIT:
@@ -658,11 +671,9 @@ async def check_ai_usage_limit(current_user: User):
     else:
         # Free users: 3 queries per MONTH
         last_reset = current_user.last_ai_reset
-        if isinstance(last_reset, str):
-            last_reset = datetime.fromisoformat(last_reset)
         
-        # Reset monthly count for free users (check if different month)
-        if last_reset.month != now.month or last_reset.year != now.year:
+        if last_reset is None:
+            # First time using AI logic
             await db.users.update_one(
                 {"user_id": current_user.user_id},
                 {"$set": {
@@ -671,6 +682,21 @@ async def check_ai_usage_limit(current_user: User):
                 }}
             )
             current_user.ai_usage_count = 0
+            current_user.last_ai_reset = now
+        else:
+            if isinstance(last_reset, str):
+                last_reset = datetime.fromisoformat(last_reset)
+            
+            # Reset monthly count for free users (check if different month)
+            if last_reset.month != now.month or last_reset.year != now.year:
+                await db.users.update_one(
+                    {"user_id": current_user.user_id},
+                    {"$set": {
+                        "ai_usage_count": 0,
+                        "last_ai_reset": now
+                    }}
+                )
+                current_user.ai_usage_count = 0
         
         # Check monthly limit for free users
         if current_user.ai_usage_count >= FREE_USER_MONTHLY_LIMIT:

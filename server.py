@@ -714,10 +714,11 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
     # Check usage limit
     usage_info = await check_ai_usage_limit(current_user)
     
-    # Process AI query
     try:
-        # Gemini API Initialization
-        gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
+        # Connect strictly to Google Gemini API
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise Exception("GEMINI_API_KEY is not configured in Render Environment Variables!")
         try:
             prompt = f"""
             You are 'The Legal Desk' AI Assistant, an expert in Indian Law designed for law students.
@@ -1013,7 +1014,9 @@ async def note_ai_action(
     
     try:
         # Connect strictly to Google Gemini API
-        gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise Exception("GEMINI_API_KEY flawlessly missing from Render exactly!")
         
         system_prompt = "You are an expert legal educator helping law students in India.\n\n"
         full_prompt = system_prompt + prompts[action]

@@ -732,11 +732,13 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 ai_resp = await client.post(url, json=payload)
-                ai_resp.raise_for_status()
-                response = ai_resp.json()['candidates'][0]['content']['parts'][0]['text']
+                if ai_resp.status_code != 200:
+                    response = f"Google API Error {ai_resp.status_code}: {ai_resp.text}"
+                else:
+                    response = ai_resp.json()['candidates'][0]['content']['parts'][0]['text']
         except Exception as api_err:
             logger.error(f"Gemini API failure: {str(api_err)}")
-            response = "I encountered an error connecting to my neural network. Please try again in exactly one minute."
+            response = f"System Error: {str(api_err)}"
         
         # Save chat message
         message_id = f"msg_{uuid.uuid4().hex[:12]}"
@@ -1012,14 +1014,20 @@ async def note_ai_action(
     try:
         # Connect strictly to Google Gemini API
         gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
+        
+        system_prompt = "You are an expert legal educator helping law students in India.\n\n"
+        full_prompt = system_prompt + prompts[action]
+        
         # Fire raw HTTP request to AI Neural Network to bypass SDK version issues
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
         payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             ai_resp = await client.post(url, json=payload)
-            ai_resp.raise_for_status()
-            response = ai_resp.json()['candidates'][0]['content']['parts'][0]['text']
+            if ai_resp.status_code != 200:
+                response = f"Google API Error {ai_resp.status_code}: {ai_resp.text}"
+            else:
+                response = ai_resp.json()['candidates'][0]['content']['parts'][0]['text']
         
         # Increment usage count
         await db.users.update_one(

@@ -1006,16 +1006,21 @@ async def note_ai_action(
     }
     
     if action not in prompts:
-        raise HTTPException(status_code=400, detail="Invalid action")
+        # If it's a custom typed question from the user, dynamically handle it!
+        prompts[action] = f"Answer the following question about this legal note: '{action}'\n\nNote Content: {note['content']}"
     
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"note_ai_{current_user.user_id}",
-            system_message="You are an expert legal educator helping law students in India."
-        ).with_model("openai", "gpt-5.2")
+        # Connect strictly to Google Gemini API
+        gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        response = await chat.send_message(UserMessage(text=prompts[action]))
+        system_prompt = "You are an expert legal educator helping law students in India.\n\n"
+        full_prompt = system_prompt + prompts[action]
+        
+        # Fire request to AI Neural Network
+        ai_result = model.generate_content(full_prompt)
+        response = ai_result.text
         
         # Increment usage count
         await db.users.update_one(

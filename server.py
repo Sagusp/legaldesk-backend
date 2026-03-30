@@ -40,7 +40,6 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # Environment variables
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
 
@@ -51,6 +50,15 @@ if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
 
 # Create the main app without a prefix
 app = FastAPI()
+
+@app.get("/debug-env")
+async def debug_environment():
+    import os
+    return {
+        "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
+        "razorpay_configured": bool(os.environ.get("RAZORPAY_KEY_ID")),
+        "message": "Debug diagnostics endpoint"
+    }
 
 async def ensure_default_admin():
     """Create a default admin account if ADMIN_EMAIL and ADMIN_PASSWORD are set."""
@@ -727,8 +735,7 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
             
             User query: {data.query}
             """
-            
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
             
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -1022,7 +1029,7 @@ async def note_ai_action(
         full_prompt = system_prompt + prompts[action]
         
         # Fire raw HTTP request to AI Neural Network to bypass SDK version issues
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
         payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
         
         async with httpx.AsyncClient(timeout=30.0) as client:

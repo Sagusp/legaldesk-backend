@@ -721,7 +721,7 @@ async def ai_query(data: AIQueryRequest, current_user: User = Depends(get_curren
         genai.configure(api_key=gemini_api_key)
         
         # Configure model and generate response
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         
         prompt = f"""
         You are 'The Legal Desk' AI Assistant, an expert in Indian Law designed for law students.
@@ -1013,7 +1013,7 @@ async def note_ai_action(
         # Connect strictly to Google Gemini API
         gemini_api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyAlS9a1hF6fno-vLVtThRgLjFuBQSG4xFs")
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         
         system_prompt = "You are an expert legal educator helping law students in India.\n\n"
         full_prompt = system_prompt + prompts[action]

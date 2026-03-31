@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from typing import List, Optional
+import base64
 from datetime import datetime, timedelta, timezone
 from models import *
 from pydantic import BaseModel
@@ -495,25 +496,51 @@ async def delete_quiz_question(question_id: str, admin: User = Depends(get_admin
 
 @admin_router.post("/internships")
 async def create_internship(
-    data: CreateInternshipRequest,
+    title: str = Form(...),
+    organization: str = Form(...),
+    location: str = Form(...),
+    category: str = Form("Lawyer/Advocate"),
+    work_mode: str = Form("Offline"),
+    practice_area: str = Form("General"),
+    duration: str = Form("1 Month"),
+    stipend: str = Form("Unpaid"),
+    description: str = Form(""),
+    requirements: str = Form(""),
+    contact_email: str = Form(...),
+    deadline_str: Optional[str] = Form(None),
+    profile_photo: Optional[UploadFile] = File(None),
     admin: User = Depends(get_admin_user)
 ):
-    """Create new internship listing"""
+    """Create new internship listing with optional image upload"""
+    profile_photo_url = None
+    
+    if profile_photo:
+        photo_content = await profile_photo.read()
+        photo_base64 = base64.b64encode(photo_content).decode('utf-8')
+        profile_photo_url = f"data:{profile_photo.content_type};base64,{photo_base64}"
+        
+    deadline_dt = None
+    if deadline_str:
+        try:
+            deadline_dt = datetime.fromisoformat(deadline_str)
+        except:
+            pass
+
     internship = Internship(
         internship_id=f"intern_{uuid.uuid4().hex[:12]}",
-        title=data.title,
-        organization=data.organization,
-        location=data.location,
-        category=data.category,
-        work_mode=data.work_mode,
-        practice_area=data.practice_area,
-        duration=data.duration,
-        stipend=data.stipend,
-        description=data.description,
-        requirements=data.requirements,
-        contact_email=data.contact_email,
-        profile_photo=data.profile_photo,
-        deadline=data.deadline,
+        title=title,
+        organization=organization,
+        location=location,
+        category=category,
+        work_mode=work_mode,
+        practice_area=practice_area,
+        duration=duration,
+        stipend=stipend,
+        description=description,
+        requirements=requirements,
+        contact_email=contact_email,
+        profile_photo=profile_photo_url,
+        deadline=deadline_dt,
         created_by=admin.user_id
     )
     

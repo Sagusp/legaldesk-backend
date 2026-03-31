@@ -2175,6 +2175,17 @@ async def get_internships(
     
     return {"internships": internships, "total": total}
 
+@api_router.get("/notifications")
+async def get_user_notifications(
+    skip: int = 0,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user)
+):
+    """Users: Get broadcasted and personal notifications"""
+    query = {"$or": [{"user_id": None}, {"user_id": current_user.user_id}]}
+    notifications = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"notifications": notifications}
+
 @api_router.get("/internships/{internship_id}")
 async def get_internship_detail(
     internship_id: str,

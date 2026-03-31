@@ -11,3 +11,4 @@ pydantic
 email-validator
 lxml
 google-generativeai
+sendgrid

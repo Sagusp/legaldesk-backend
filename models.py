@@ -199,18 +199,41 @@ class LeaderboardEntry(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 # Internship Models
+class InternshipCategory(str, Enum):
+    LAWYER = "Lawyer/Advocate"
+    JUDGE = "Judge"
+    CORPORATE = "Corporate"
+    NGO = "NGO"
+
 class Internship(BaseModel):
     internship_id: str
     title: str
     organization: str
     location: str
-    type: str  # "Internship" or "Job"
+    category: InternshipCategory
+    work_mode: str = "Offline"  # Online, Offline, Hybrid
+    practice_area: str = "General"
+    duration: str = "1 Month"
+    stipend: str = "Unpaid"
     description: str
-    requirements: List[str] = []
-    application_link: str
+    requirements: str = ""
+    contact_email: str
+    profile_photo: Optional[str] = None
     deadline: Optional[datetime] = None
     is_active: bool = True
     created_by: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class InternshipApplication(BaseModel):
+    application_id: str
+    internship_id: str
+    user_id: str
+    name: str
+    email: str
+    cover_letter: str
+    resume_file_id: str  # File ID or URL pointing to stored resume
+    status: str = "applied"  # applied, shortlisted, rejected
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

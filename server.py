@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Response, File, UploadFile, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Response, File, UploadFile, Form, Body
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -943,7 +943,9 @@ async def get_notes(
     
     # NOTE: Free users can see all notes but cannot open premium ones (handled in frontend)
     
-    notes = await db.notes.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    # Exclude massive 'pdf_data' and 'content' fields to fix 100MB+ payload bottleneck
+    projection = {"_id": 0, "pdf_data": 0, "content": 0}
+    notes = await db.notes.find(query, projection).skip(skip).limit(limit).to_list(limit)
     total = await db.notes.count_documents(query)
     
     return {"notes": notes, "total": total}
@@ -1248,7 +1250,9 @@ async def get_papers(
     
     # NOTE: Free users can see all papers but cannot open premium ones (handled in frontend)
     
-    papers = await db.question_papers.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    # Exclude massive 'pdf_data' and 'content' fields to fix 100MB+ payload bottleneck
+    projection = {"_id": 0, "pdf_data": 0, "pdf_content": 0}
+    papers = await db.question_papers.find(query, projection).skip(skip).limit(limit).to_list(limit)
     total = await db.question_papers.count_documents(query)
     
     return {"papers": papers, "total": total}
@@ -1406,7 +1410,9 @@ async def get_bare_acts(
     
     # NOTE: Free users can see all acts but cannot open premium ones (handled in frontend)
     
-    acts = await db.bare_acts.find(query, {"_id": 0, "sections": 0}).skip(skip).limit(limit).to_list(limit)
+    # Exclude massive 'pdf_data' and 'sections' fields to fix 100MB+ payload bottleneck
+    projection = {"_id": 0, "sections": 0, "pdf_data": 0, "pdf_content": 0}
+    acts = await db.bare_acts.find(query, projection).skip(skip).limit(limit).to_list(limit)
     total = await db.bare_acts.count_documents(query)
     
     return {"acts": acts, "total": total}
@@ -2140,6 +2146,198 @@ async def admin_create_term(
     return {"message": "Term created", "term_id": term_id}
 
 # ===========================
+# Internships & Jobs Endpoints
+# ===========================
+
+@api_router.get("/internships")
+async def get_internships(
+    category: Optional[str] = None,
+    location: Optional[str] = None,
+    practice_area: Optional[str] = None,
+    work_mode: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user)
+):
+    """Users: Get filtered list of internships"""
+    query = {"is_active": True}
+    if category:
+        query["category"] = category
+    if location:
+        query["location"] = {"$regex": location, "$options": "i"}
+    if practice_area:
+        query["practice_area"] = {"$regex": practice_area, "$options": "i"}
+    if work_mode:
+        query["work_mode"] = work_mode
+        
+    internships = await db.internships.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    total = await db.internships.count_documents(query)
+    
+    return {"internships": internships, "total": total}
+
+@api_router.get("/internships/{internship_id}")
+async def get_internship_detail(
+    internship_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Users: Get specific internship details"""
+    internship = await db.internships.find_one({"internship_id": internship_id}, {"_id": 0})
+    if not internship:
+        raise HTTPException(status_code=404, detail="Internship not found")
+        
+    return internship
+
+@api_router.post("/internships/{internship_id}/apply")
+async def apply_for_internship(
+    internship_id: str,
+    name: str = Form(...),
+    email: str = Form(...),
+    cover_letter: str = Form(""),
+    resume: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Users: Apply for an internship with resume upload"""
+    internship = await db.internships.find_one({"internship_id": internship_id}, {"_id": 0})
+    if not internship:
+        raise HTTPException(status_code=404, detail="Internship not found")
+        
+    # Check if already applied
+    existing_app = await db.internship_applications.find_one({
+        "internship_id": internship_id,
+        "user_id": current_user.user_id
+    })
+    if existing_app:
+        raise HTTPException(status_code=400, detail="You have already applied for this internship/job.")
+
+    # Save resume as base64 string
+    resume_content = await resume.read()
+    resume_base64 = base64.b64encode(resume_content).decode('utf-8')
+    resume_file_id = f"res_{uuid.uuid4().hex[:12]}"
+
+    import sendgrid
+    from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+    
+    # Try sending email notification using SendGrid (if configured)
+    sg_api_key = os.environ.get('SENDGRID_API_KEY')
+    if sg_api_key:
+        try:
+            sg = sendgrid.SendGridAPIClient(api_key=sg_api_key)
+            # Create the email
+            message = Mail(
+                from_email='noreply@thelegaldesk.com',
+                to_emails=internship['contact_email'],
+                subject=f"New Application for {internship['title']} - {name}",
+                html_content=f'''
+                <h3>New Application Received</h3>
+                <p><strong>Candidate:</strong> {name}</p>
+                <p><strong>Email:</strong> {email}</p>
+                <p><strong>Internship/Role:</strong> {internship['title']} ({internship['category']})</p>
+                <p><strong>Cover Letter:</strong></p>
+                <p>{cover_letter}</p>
+                <p><em>The resume is attached to this email.</em></p>
+                '''
+            )
+            
+            # Attach the resume
+            attachment = Attachment(
+                FileContent(resume_base64),
+                FileName(resume.filename),
+                FileType(resume.content_type or 'application/pdf'),
+                Disposition('attachment')
+            )
+            message.attachment = attachment
+            
+            sg.send(message)
+        except Exception as e:
+            logger.error(f"Failed to send email regarding application: {str(e)}")
+            # We don't abort the application process just because the email failed.
+
+    application_id = f"app_{uuid.uuid4().hex[:12]}"
+    application = {
+        "application_id": application_id,
+        "internship_id": internship_id,
+        "user_id": current_user.user_id,
+        "name": name,
+        "email": email,
+        "cover_letter": cover_letter,
+        "resume_file_id": resume_file_id,
+        "resume_data": resume_base64, # Heavy field, should typically be kept in cloud storage but database takes it for now
+        "resume_filename": resume.filename,
+        "status": "applied",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.internship_applications.insert_one(application)
+    return {"message": "Application submitted successfully!", "application_id": application_id}
+
+@api_router.get("/internships/my-applications")
+async def get_my_applications(current_user: User = Depends(get_current_user)):
+    """Users: Get their applied internships"""
+    applications = await db.internship_applications.find(
+        {"user_id": current_user.user_id}, 
+        {"_id": 0, "resume_data": 0}
+    ).to_list(100)
+    
+    # Enrich with internship details
+    for app in applications:
+        internship = await db.internships.find_one({"internship_id": app["internship_id"]}, {"_id": 0})
+        app["internship"] = internship
+
+    return {"applications": applications}
+
+# Admin: View all applications for a specific internship
+@api_router.get("/admin/internships/{internship_id}/applications")
+async def admin_get_internship_applications(
+    internship_id: str,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Get all applications for a specific internship"""
+    applications = await db.internship_applications.find(
+        {"internship_id": internship_id},
+        {"_id": 0, "resume_data": 0} # Exclude base64 strings
+    ).to_list(500)
+    return {"applications": applications}
+
+# Admin: Provide resume download
+@api_router.get("/admin/applications/{application_id}/resume")
+async def admin_download_resume(
+    application_id: str,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Download resume for an application"""
+    application = await db.internship_applications.find_one({"application_id": application_id})
+    if not application or not application.get("resume_data"):
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    pdf_bytes = base64.b64decode(application["resume_data"])
+    filename = application.get("resume_filename", "resume.pdf")
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+# Admin: Update application status
+@api_router.put("/admin/applications/{application_id}/status")
+async def admin_update_application_status(
+    application_id: str,
+    data: dict = Body(...),
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Mark status as applied, shortlisted, or rejected"""
+    status = data.get("status")
+    if status not in ["applied", "shortlisted", "rejected"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+        
+    await db.internship_applications.update_one(
+        {"application_id": application_id},
+        {"$set": {"status": status, "updated_at": datetime.utcnow()}}
+    )
+    return {"message": f"Status updated to {status}"}
+
+# ===========================
 # Razorpay Payment Routes
 # ===========================
 
@@ -2365,7 +2563,7 @@ async def admin_get_users(
 @api_router.put("/admin/users/{user_id}")
 async def admin_update_user(
     user_id: str,
-    data: dict,
+    data: dict = Body(...),
     admin: User = Depends(get_admin_user)
 ):
     """Admin: Update user data (e.g. grant premium)"""
@@ -2383,7 +2581,7 @@ async def admin_delete_user(
 
 @api_router.post("/admin/notifications")
 async def admin_create_notification(
-    data: dict,
+    data: dict = Body(...),
     admin: User = Depends(get_admin_user)
 ):
     """Admin: Send a notification to all users"""

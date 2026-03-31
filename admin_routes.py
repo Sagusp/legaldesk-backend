@@ -77,10 +77,15 @@ class CreateInternshipRequest(BaseModel):
     title: str
     organization: str
     location: str
-    type: str
+    category: str
+    work_mode: str = "Offline"
+    practice_area: str = "General"
+    duration: str = "1 Month"
+    stipend: str = "Unpaid"
     description: str
-    requirements: List[str] = []
-    application_link: str
+    requirements: str = ""
+    contact_email: str
+    profile_photo: Optional[str] = None
     deadline: Optional[datetime] = None
 
 class UpdateUserRequest(BaseModel):
@@ -125,6 +130,8 @@ async def get_dashboard_stats(authorization: Optional[str] = Header(None), reque
     papers_count = await db.question_papers.count_documents({})
     acts_count = await db.bare_acts.count_documents({})
     terms_count = await db.legal_terms.count_documents({})
+    internships_count = await db.internships.count_documents({})
+    applications_count = await db.internship_applications.count_documents({})
     
     # Subscription stats (placeholder - will be real when Razorpay integrated)
     revenue_monthly = 0  # Calculate from subscriptions
@@ -144,7 +151,9 @@ async def get_dashboard_stats(authorization: Optional[str] = Header(None), reque
             "notes": notes_count,
             "question_papers": papers_count,
             "bare_acts": acts_count,
-            "legal_terms": terms_count
+            "legal_terms": terms_count,
+            "internships": internships_count,
+            "applications": applications_count
         },
         "revenue": {
             "monthly": revenue_monthly,
@@ -495,10 +504,15 @@ async def create_internship(
         title=data.title,
         organization=data.organization,
         location=data.location,
-        type=data.type,
+        category=data.category,
+        work_mode=data.work_mode,
+        practice_area=data.practice_area,
+        duration=data.duration,
+        stipend=data.stipend,
         description=data.description,
         requirements=data.requirements,
-        application_link=data.application_link,
+        contact_email=data.contact_email,
+        profile_photo=data.profile_photo,
         deadline=data.deadline,
         created_by=admin.user_id
     )

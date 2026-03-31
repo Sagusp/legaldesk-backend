@@ -628,7 +628,9 @@ async def send_notification(
     data: SendNotificationRequest,
     admin: User = Depends(get_admin_user)
 ):
-    """Send notification to user(s)"""
+    """Send notification to user(s) - also sends real push notification to device"""
+    import httpx
+
     notification = Notification(
         notification_id=f"notif_{uuid.uuid4().hex[:12]}",
         user_id=data.user_id,
@@ -641,11 +643,64 @@ async def send_notification(
     
     await db.notifications.insert_one(notification.dict())
     
-    # In production, integrate with push notification service
+    # ============================================================
+    # SEND REAL PUSH NOTIFICATIONS via Expo Push API
+    # ============================================================
+    push_messages = []
+
+    if data.user_id:
+        # Send to a specific user
+        user_doc = await db.users.find_one({"user_id": data.user_id}, {"_id": 0, "push_token": 1})
+        if user_doc and user_doc.get("push_token"):
+            push_messages.append({
+                "to": user_doc["push_token"],
+                "sound": "default",
+                "title": data.title,
+                "body": data.message or "",
+                "data": {"type": data.type, "notification_id": notification.notification_id},
+            })
+    else:
+        # Broadcast to ALL users who have a push token
+        users_with_tokens = await db.users.find(
+            {"push_token": {"$exists": True, "$ne": None}},
+            {"_id": 0, "push_token": 1}
+        ).to_list(500)
+        
+        for u in users_with_tokens:
+            if u.get("push_token"):
+                push_messages.append({
+                    "to": u["push_token"],
+                    "sound": "default",
+                    "title": data.title,
+                    "body": data.message or "",
+                    "data": {"type": data.type, "notification_id": notification.notification_id},
+                })
+
+    # Send in batches of 100 (Expo limit)
+    sent_count = 0
+    if push_messages:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                for i in range(0, len(push_messages), 100):
+                    batch = push_messages[i:i+100]
+                    resp = await client.post(
+                        "https://exp.host/--/api/v2/push/send",
+                        json=batch,
+                        headers={
+                            "Accept": "application/json",
+                            "Accept-Encoding": "gzip, deflate",
+                            "Content-Type": "application/json",
+                        }
+                    )
+                    sent_count += len(batch)
+        except Exception as e:
+            print(f"Push notification error (non-fatal): {e}")
+
     return {
         "message": "Notification sent successfully",
         "notification_id": notification.notification_id,
-        "target": "All users" if not data.user_id else f"User {data.user_id}"
+        "target": "All users" if not data.user_id else f"User {data.user_id}",
+        "push_sent": sent_count
     }
 
 @admin_router.get("/notifications")

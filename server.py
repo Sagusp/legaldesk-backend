@@ -814,6 +814,19 @@ async def update_user_profile(name: str, current_user: User = Depends(get_curren
     )
     return {"message": "Profile updated successfully"}
 
+class PushTokenRequest(BaseModel):
+    push_token: str
+
+@api_router.post("/user/push-token")
+async def save_push_token(data: PushTokenRequest, current_user: User = Depends(get_current_user)):
+    """Save Expo push token for the current user so they receive push notifications"""
+    await db.users.update_one(
+        {"user_id": current_user.user_id},
+        {"$set": {"push_token": data.push_token, "updated_at": datetime.utcnow()}}
+    )
+    return {"message": "Push token saved successfully"}
+
+
 # ===========================
 # Health Check
 # ===========================
@@ -865,17 +878,31 @@ async def admin_get_users(skip: int = 0, limit: int = 50, admin: User = Depends(
     total = await db.users.count_documents({})
     return {"users": users, "total": total}
 
+class UpdateUserRequest(BaseModel):
+    subscription_status: str
+
 @api_router.put("/admin/users/{user_id}")
-async def admin_update_user(user_id: str, subscription_status: str, admin: User = Depends(get_admin_user)):
-    """Update user - grant premium"""
-    update_data = {"subscription_status": subscription_status, "updated_at": datetime.utcnow()}
-    if subscription_status == "premium":
+async def admin_update_user(user_id: str, data: UpdateUserRequest, admin: User = Depends(get_admin_user)):
+    """Update user - grant/revoke premium"""
+    update_data = {"subscription_status": data.subscription_status, "updated_at": datetime.utcnow()}
+    if data.subscription_status == "premium":
         update_data["subscription_expiry"] = datetime.utcnow() + timedelta(days=365)
+    else:
+        update_data["subscription_expiry"] = None
     
     result = await db.users.update_one({"user_id": user_id}, {"$set": update_data})
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "User updated successfully"}
+
+@api_router.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, admin: User = Depends(get_admin_user)):
+    """Delete a user account"""
+    result = await db.users.delete_one({"user_id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.user_sessions.delete_many({"user_id": user_id})
+    return {"message": "User deleted successfully"}
 
 @api_router.get("/admin/ai-usage")
 async def admin_ai_usage(admin: User = Depends(get_admin_user)):

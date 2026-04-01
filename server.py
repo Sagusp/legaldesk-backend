@@ -2687,14 +2687,109 @@ async def get_user_notifications(current_user: User = Depends(get_current_user))
         return {"notifications": [notif]}
     return {"notifications": []}
 
-# Include the routers in the main app
+# ===========================
+# Internship Management (Admin)
+# ===========================
+
+@api_router.post("/admin/internships")
+async def admin_create_internship(
+    title: str = Form(...),
+    organization: str = Form(...),
+    location: str = Form(...),
+    category: str = Form("Lawyer/Advocate"),
+    work_mode: str = Form("Offline"),
+    practice_area: str = Form("General"),
+    duration: str = Form("1 Month"),
+    stipend: str = Form("Unpaid"),
+    description: str = Form(""),
+    requirements: str = Form(""),
+    contact_email: str = Form(...),
+    deadline_str: Optional[str] = Form(None),
+    profile_photo: Optional[UploadFile] = File(None),
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Create new internship listing with optional image upload"""
+    import base64
+    profile_photo_url = None
+    if profile_photo:
+        photo_content = await profile_photo.read()
+        photo_base64 = base64.b64encode(photo_content).decode('utf-8')
+        profile_photo_url = f"data:{profile_photo.content_type};base64,{photo_base64}"
+
+    deadline_dt = None
+    if deadline_str:
+        try:
+            deadline_dt = datetime.fromisoformat(deadline_str)
+        except:
+            pass
+
+    internship_id = f"intern_{uuid.uuid4().hex[:12]}"
+    internship = {
+        "internship_id": internship_id,
+        "title": title,
+        "organization": organization,
+        "location": location,
+        "category": category,
+        "work_mode": work_mode,
+        "practice_area": practice_area,
+        "duration": duration,
+        "stipend": stipend,
+        "description": description,
+        "requirements": requirements,
+        "contact_email": contact_email,
+        "profile_photo": profile_photo_url,
+        "deadline": deadline_dt,
+        "created_by": admin.user_id,
+        "created_at": datetime.utcnow(),
+        "is_active": True,
+    }
+    await db.internships.insert_one(internship)
+    return {"message": "Internship created", "internship_id": internship_id}
+
+
+@api_router.get("/admin/internships")
+async def admin_get_internships(
+    skip: int = 0,
+    limit: int = 50,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Get all internships"""
+    internships = await db.internships.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    total = await db.internships.count_documents({})
+    return {"internships": internships, "total": total}
+
+
+@api_router.delete("/admin/internships/{internship_id}")
+async def admin_delete_internship(
+    internship_id: str,
+    admin: User = Depends(get_admin_user)
+):
+    """Admin: Delete an internship"""
+    result = await db.internships.delete_one({"internship_id": internship_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Internship not found")
+    return {"message": "Internship deleted"}
+
+
+@api_router.get("/internships")
+async def get_internships_public(skip: int = 0, limit: int = 50):
+    """Public: Get all active internships"""
+    internships = await db.internships.find({"is_active": True}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    total = await db.internships.count_documents({"is_active": True})
+    return {"internships": internships, "total": total}
+
+
+@api_router.get("/internships/{internship_id}")
+async def get_internship_detail(internship_id: str):
+    """Public: Get internship detail"""
+    internship = await db.internships.find_one({"internship_id": internship_id}, {"_id": 0})
+    if not internship:
+        raise HTTPException(status_code=404, detail="Internship not found")
+    return internship
+
+
+# Include the router in the main app
 app.include_router(api_router)
-
-# Include admin router (IMPORTANT: must be after api_router)
-from admin_routes import admin_router, set_dependencies as set_admin_deps
-set_admin_deps(db, get_admin_user)
-app.include_router(admin_router, prefix="/api")
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -2707,3 +2802,4 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+

@@ -2622,17 +2622,52 @@ async def admin_create_notification(
     data: dict = Body(...),
     admin: User = Depends(get_admin_user)
 ):
-    """Admin: Send a notification to all users"""
+    """Admin: Send a notification — deletes old ones so only the latest shows"""
     notif_id = f"notif_{uuid.uuid4().hex[:12]}"
     notif = {
         "notification_id": notif_id,
         "title": data.get("title", ""),
         "content": data.get("content", ""),
+        "type": data.get("type", "general"),
         "created_by": admin.user_id,
         "created_at": datetime.utcnow()
     }
+    # Delete ALL previous notifications so only the new one exists
+    await db.notifications.delete_many({})
     await db.notifications.insert_one(notif)
-    return {"message": "Notification created", "notification_id": notif_id}
+
+    # Send Expo push notification to all users
+    import httpx
+    try:
+        users_with_tokens = await db.users.find(
+            {"push_token": {"$exists": True, "$ne": None}},
+            {"_id": 0, "push_token": 1}
+        ).to_list(500)
+
+        messages = [
+            {
+                "to": u["push_token"],
+                "sound": "default",
+                "title": notif["title"],
+                "body": notif["content"] or "",
+                "data": {"type": notif["type"]},
+            }
+            for u in users_with_tokens if u.get("push_token")
+        ]
+
+        if messages:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                for i in range(0, len(messages), 100):
+                    await client.post(
+                        "https://exp.host/--/api/v2/push/send",
+                        json=messages[i:i+100],
+                        headers={"Content-Type": "application/json"},
+                    )
+    except Exception as e:
+        print(f"Push error (non-fatal): {e}")
+
+    return {"message": "Notification sent", "notification_id": notif_id}
+
 
 @api_router.get("/notifications/latest")
 async def get_latest_notification(
@@ -2644,8 +2679,22 @@ async def get_latest_notification(
         return {"notification": notif}
     return {"notification": None}
 
-# Include the router in the main app
+@api_router.get("/notifications")
+async def get_user_notifications(current_user: User = Depends(get_current_user)):
+    """User: Fetch all notifications (latest first, max 1)"""
+    notif = await db.notifications.find_one({}, {"_id": 0}, sort=[("created_at", -1)])
+    if notif:
+        return {"notifications": [notif]}
+    return {"notifications": []}
+
+# Include the routers in the main app
 app.include_router(api_router)
+
+# Include admin router (IMPORTANT: must be after api_router)
+from admin_routes import admin_router, set_dependencies as set_admin_deps
+set_admin_deps(db, get_admin_user)
+app.include_router(admin_router, prefix="/api")
+
 
 app.add_middleware(
     CORSMiddleware,

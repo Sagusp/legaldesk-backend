@@ -115,6 +115,10 @@ async def get_current_user(authorization: Optional[str] = Header(None), request:
     # Try to get from Authorization header
     if authorization and authorization.startswith("Bearer "):
         session_token = authorization.replace("Bearer ", "")
+        
+    # Try to get from query string
+    if not session_token and request:
+        session_token = request.query_params.get("token")
     
     # Try to get from cookie
     if not session_token and request:
@@ -1345,13 +1349,11 @@ Include:
 Format it for an Indian law exam."""
     
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"paper_{current_user.user_id}",
-            system_message="You are an expert in Indian law helping students prepare for exams."
-        ).with_model("openai", "gpt-5.2")
-        
-        response = await chat.send_message(UserMessage(text=prompt))
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        full_prompt = "You are an expert in Indian law helping students prepare for exams.\n\n" + prompt
+        resp = await model.generate_content_async(full_prompt)
+        response = resp.text
         
         # Increment usage count
         await db.users.update_one(
@@ -1513,13 +1515,11 @@ Provide:
 4. Related case laws (if any)"""
     
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"act_{current_user.user_id}",
-            system_message="You are an expert in Indian law explaining legal provisions to students."
-        ).with_model("openai", "gpt-5.2")
-        
-        response = await chat.send_message(UserMessage(text=prompt))
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        full_prompt = "You are an expert in Indian law explaining legal provisions to students.\n\n" + prompt
+        resp = await model.generate_content_async(full_prompt)
+        response = resp.text
         
         # Increment usage count
         await db.users.update_one(
@@ -1572,13 +1572,11 @@ Relevant case laws if applicable
 Summary and practical implications"""
     
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"act_qa_{current_user.user_id}",
-            system_message="You are an expert in Indian law helping students understand bare acts and legal provisions."
-        ).with_model("openai", "gpt-5.2")
-        
-        response = await chat.send_message(UserMessage(text=prompt))
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        full_prompt = "You are an expert in Indian law helping students understand bare acts and legal provisions.\n\n" + prompt
+        resp = await model.generate_content_async(full_prompt)
+        response = resp.text
         
         # Increment usage count
         await db.users.update_one(
@@ -1772,13 +1770,11 @@ IMPORTANT:
 - If information unavailable, state "Information unavailable" instead of making up content
 - Be accurate and scholarly"""
 
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"dict_{current_user.user_id}",
-            system_message="You are an expert in Indian Law. Provide accurate, structured, exam-oriented answers. Cite only real cases and provisions."
-        ).with_model("openai", "gpt-5.2")
-        
-        response = await chat.send_message(UserMessage(text=prompt))
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        full_prompt = "You are an expert in Indian Law. Provide accurate, structured, exam-oriented answers. Cite only real cases and provisions.\n\n" + prompt
+        resp = await model.generate_content_async(full_prompt)
+        response = resp.text
         
         # Cache the response
         cache_entry = {
@@ -1921,13 +1917,11 @@ Explanation: [Detailed explanation with case law or section reference]
 
 Generate exactly {data.question_count} questions in this format."""
 
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"quiz_{current_user.user_id}",
-            system_message="You are an expert in Indian Law. Generate accurate MCQ questions with real case laws and provisions."
-        ).with_model("openai", "gpt-5.2")
-        
-        response = await chat.send_message(UserMessage(text=prompt))
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        full_prompt = "You are an expert in Indian Law. Generate accurate MCQ questions with real case laws and provisions.\n\n" + prompt
+        resp = await model.generate_content_async(full_prompt)
+        response = resp.text
         
         # Parse AI response into structured format
         questions = parse_quiz_response(response, data.question_count)

@@ -95,7 +95,7 @@ class UpdateUserRequest(BaseModel):
 
 class SendNotificationRequest(BaseModel):
     title: str
-    message: str
+    content: str
     type: str
     user_id: Optional[str] = None  # None for broadcast
 
@@ -635,7 +635,7 @@ async def send_notification(
         notification_id=f"notif_{uuid.uuid4().hex[:12]}",
         user_id=data.user_id,
         title=data.title,
-        message=data.message,
+        content=data.content,
         type=data.type,
         sent_at=datetime.utcnow(),
         created_by=admin.user_id
@@ -656,7 +656,7 @@ async def send_notification(
                 "to": user_doc["push_token"],
                 "sound": "default",
                 "title": data.title,
-                "body": data.message or "",
+                "body": data.content or "",
                 "data": {"type": data.type, "notification_id": notification.notification_id},
             })
     else:

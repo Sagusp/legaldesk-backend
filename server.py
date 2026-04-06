@@ -1350,7 +1350,7 @@ Format it for an Indian law exam."""
     
     try:
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         full_prompt = "You are an expert in Indian law helping students prepare for exams.\n\n" + prompt
         resp = await model.generate_content_async(full_prompt)
         response = resp.text
@@ -1516,7 +1516,7 @@ Provide:
     
     try:
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         full_prompt = "You are an expert in Indian law explaining legal provisions to students.\n\n" + prompt
         resp = await model.generate_content_async(full_prompt)
         response = resp.text
@@ -1573,7 +1573,7 @@ Summary and practical implications"""
     
     try:
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         full_prompt = "You are an expert in Indian law helping students understand bare acts and legal provisions.\n\n" + prompt
         resp = await model.generate_content_async(full_prompt)
         response = resp.text
@@ -1771,7 +1771,7 @@ IMPORTANT:
 - Be accurate and scholarly"""
 
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         full_prompt = "You are an expert in Indian Law. Provide accurate, structured, exam-oriented answers. Cite only real cases and provisions.\n\n" + prompt
         resp = await model.generate_content_async(full_prompt)
         response = resp.text
@@ -1918,7 +1918,7 @@ Explanation: [Detailed explanation with case law or section reference]
 Generate exactly {data.question_count} questions in this format."""
 
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         full_prompt = "You are an expert in Indian Law. Generate accurate MCQ questions with real case laws and provisions.\n\n" + prompt
         resp = await model.generate_content_async(full_prompt)
         response = resp.text
